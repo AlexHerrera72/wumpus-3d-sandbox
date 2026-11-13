@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://wumpus3dsandboxmain"]
+
+[ext_resource type="Script" path="res://world_3d/MainSandbox.gd" id="1_mainsandbox"]
+
+[node name="MainSandbox" type="Node3D"]
+script = ExtResource("1_mainsandbox")

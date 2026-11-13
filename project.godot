@@ -1,0 +1,38 @@
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
+
+config_version=5
+
+[application]
+
+config/name="Mundo de Wumpus Autonomo 3D Sandbox"
+config/description="Simulador 3D Tabletop del Mundo de Wumpus con IA Hibrida Simbolica (SE/RBR R1-R8 + AStarGrid2D + RBC 4R + XAI), Modo Dios en tiempo real y soporte multi-plataforma (PC FreeCam, Steam Deck Gyro y OpenXR VR)."
+run/main_scene="res://world_3d/MainSandbox.tscn"
+config/features=PackedStringArray("4.3", "Forward Plus")
+config/icon="res://icon.svg"
+
+[autoload]
+
+GameConstants="*res://autoloads/GameConstants.gd"
+EventBus="*res://autoloads/EventBus.gd"
+PlatformManager="*res://autoloads/PlatformManager.gd"
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=800
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+
+[input_devices]
+
+pointing/emulate_touch_from_mouse=false
+
+[rendering]
+
+environment/defaults/default_clear_color=Color(0.055, 0.063, 0.078, 1)

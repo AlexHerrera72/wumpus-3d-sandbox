@@ -1,0 +1,37 @@
+extends Node
+## Autoload: EventBus
+## Canal centralizado de senales para garantizar cero acoplamiento directo
+## entre la IA Simbolica/Hibrida, el Tablero 3D, los Rigs de Camara y la UI XAI.
+
+@warning_ignore("unused_signal")
+signal god_tool_changed(new_tool: GameConstants.GodTool)
+@warning_ignore("unused_signal")
+signal god_action_requested(cell: Vector2i, tool: GameConstants.GodTool)
+@warning_ignore("unused_signal")
+signal cursor_cell_hovered(cell: Vector2i, is_valid: bool)
+@warning_ignore("unused_signal")
+signal board_resize_requested(new_size: Vector2i)
+@warning_ignore("unused_signal")
+signal world_truth_changed(truth_snapshot: Dictionary)
+@warning_ignore("unused_signal")
+signal epistemic_state_updated(visual_states: Dictionary, current_path: Array[Vector2i])
+@warning_ignore("unused_signal")
+signal agent_transform_updated(grid_pos: Vector2i, facing_dir: Vector2i, is_moving: bool)
+@warning_ignore("unused_signal")
+signal agent_arrow_fired(from_cell: Vector2i, target_cell: Vector2i, hit_wumpus: bool)
+@warning_ignore("unused_signal")
+signal xai_rule_triggered(turn_number: int, rule_code: String, message: String)
+@warning_ignore("unused_signal")
+signal xai_cbr_triggered(turn_number: int, similarity: float, chosen_cell: Vector2i, reason: String)
+@warning_ignore("unused_signal")
+signal sim_state_changed(new_state: GameConstants.SimState, status_message: String)
+@warning_ignore("unused_signal")
+signal sim_control_requested(action: String) # "PLAY", "PAUSE", "STEP", "RESET"
+@warning_ignore("unused_signal")
+signal control_rig_switched(new_mode: GameConstants.ControlRigMode)
+@warning_ignore("unused_signal")
+signal sim_speed_changed(speed_multiplier: float)
+@warning_ignore("unused_signal")
+signal board_rotation_reset_requested()
+@warning_ignore("unused_signal")
+signal keybinds_updated()
