@@ -1,14 +1,17 @@
 extends Node
 ## Autoload: GameConstants
-## Define todas las constantes globales, timings de coreografia estilo ajedrez,
-## pesos heuristicos, transformacion local del tablero giratorio y enumeraciones.
+## Define constantes globales, timings de ajedrez, soporte hasta 5 pisos de
+## mazmorra, herramientas de construccion (incluyendo Portales Azul/Naranja,
+## Escaleras entre pisos y Flechas recogibles) y proyeccion local de raycast.
 
 const DEFAULT_GRID_SIZE: Vector2i = Vector2i(6, 6)
 const MIN_GRID_SIZE: Vector2i = Vector2i(4, 4)
 const MAX_GRID_SIZE: Vector2i = Vector2i(8, 8)
 const CELL_SIZE: float = 2.0
+const MAX_FLOORS: int = 5
+const FLOOR_SEPARATION_Y: float = 6.8
 
-# Timings base estilo Piezas de Ajedrez (Iteracion 2 - Seccion 1.1 y 1.2)
+# Timings base estilo Piezas de Ajedrez
 const THINK_DELAY: float = 0.55
 const CHESS_MOVE_DURATION: float = 0.85
 const SETTLE_DELAY: float = 0.35
@@ -17,16 +20,21 @@ const CHESS_ARC_HEIGHT: float = 1.15
 const WEIGHT_SAFE: float = 1.0
 const WEIGHT_SUSPICIOUS: float = 25.0
 
-# Transformacion global del nodo giratorio del tablero (actualizada por SandboxBoard3D)
-# donde el origen local (0, 0, 0) corresponde a la celda (0, 0).
+# Transformacion global del piso actualmente enfocado en SandboxBoard3D
 var board_global_transform: Transform3D = Transform3D.IDENTITY
 var current_speed_multiplier: float = 1.0
+var active_view_floor: int = 0
+var active_floor_count: int = 1
+var is_gameplay_active: bool = false
 
 enum GodTool {
 	TOGGLE_PIT,
 	TOGGLE_WUMPUS,
 	TOGGLE_WALL,
 	MOVE_GOLD,
+	TOGGLE_PORTAL,
+	TOGGLE_STAIRS,
+	TOGGLE_ARROW,
 	CLEAR_CELL
 }
 
@@ -77,6 +85,9 @@ const ORTHOGONAL_DIRS: Array[Vector2i] = [
 func grid_to_world(cell: Vector2i, y_offset: float = 0.0) -> Vector3:
 	return Vector3(float(cell.x) * CELL_SIZE, y_offset, float(cell.y) * CELL_SIZE)
 
+func grid3_to_world(cell: Vector3i, y_offset: float = 0.0) -> Vector3:
+	return Vector3(float(cell.x) * CELL_SIZE, y_offset, float(cell.y) * CELL_SIZE)
+
 func world_to_grid(world_pos: Vector3) -> Vector2i:
 	var inv_xform: Transform3D = board_global_transform.affine_inverse()
 	var local_pos: Vector3 = inv_xform * world_pos
@@ -101,16 +112,25 @@ func world_ray_to_grid(ray_origin: Vector3, ray_normal: Vector3, grid_size: Vect
 		return Vector2i(-1, -1)
 	return Vector2i(gx, gz)
 
+func get_tool_count() -> int:
+	return 8
+
 func get_tool_display_name(tool_id: GodTool) -> String:
 	match tool_id:
 		GodTool.TOGGLE_PIT:
 			return "Pozo (Pit)"
 		GodTool.TOGGLE_WUMPUS:
-			return "Wumpus"
+			return "Wumpus (Multiple)"
 		GodTool.TOGGLE_WALL:
 			return "Muro (Wall)"
 		GodTool.MOVE_GOLD:
 			return "Mover Oro"
+		GodTool.TOGGLE_PORTAL:
+			return "Portal (Azul/Naranja)"
+		GodTool.TOGGLE_STAIRS:
+			return "Escalera (Pisos)"
+		GodTool.TOGGLE_ARROW:
+			return "Flecha (Municion)"
 		GodTool.CLEAR_CELL:
 			return "Limpiar Celda"
 	return "Desconocido"
@@ -124,9 +144,9 @@ func get_sim_state_display_name(state: SimState) -> String:
 		SimState.STEPPING:
 			return "PASO A PASO"
 		SimState.WAITING_FOR_GOD_MODE:
-			return "ESPERANDO MODO DIOS (BLOQUEADO)"
+			return "ESPERANDO MODO DIOS"
 		SimState.VICTORY:
-			return "VICTORIA (MISION CUMPLIDA)"
+			return "VICTORIA"
 		SimState.GAME_OVER:
-			return "GAME OVER (AGENTE ELIMINADO)"
+			return "GAME OVER"
 	return "DESCONOCIDO"

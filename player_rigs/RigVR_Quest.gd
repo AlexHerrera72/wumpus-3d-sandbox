@@ -1,10 +1,9 @@
 class_name RigVR_Quest
 extends XROrigin3D
 ## Sistema Multi-Camara: RigVR_Quest (Modo 3 - Realidad Virtual OpenXR Meta Quest)
-## Configura XROrigin3D a escala maqueta frente al tablero, XRController3D derecho
-## con rayo laser 3D (ImmediateMesh) que intersecta el plano local del tablero
-## rotado mediante GameConstants.world_ray_to_grid, y XRController3D izquierdo
-## con acoplamiento para el panel de auditoria XAI de muneca.
+## Esquema de 4 botones principales (2 por mando):
+##   Mano Derecha: ax_button -> Accion/Play | by_button -> Retroceso/Stop | trigger_click -> Colocar pieza
+##   Mano Izquierda: ax_button -> Desplegar Menu | by_button -> Auxiliar (Ciclar Herramienta) | grip_click -> Cambiar Piso
 
 const VRWristPanelScript = preload("res://ui_xai/VR_WristPanel3D.gd")
 
@@ -37,12 +36,12 @@ func _build_xr_nodes() -> void:
 	xr_camera.position = Vector3(0.0, 1.65, 0.0)
 	add_child(xr_camera)
 
-	# Controlador Derecho: Laser de seleccion Modo Dios
 	right_controller = XRController3D.new()
 	right_controller.name = "RightHandController"
 	right_controller.tracker = &"right_hand"
 	right_controller.pose = &"aim"
 	right_controller.button_pressed.connect(_on_right_controller_button_pressed)
+	right_controller.button_released.connect(_on_right_controller_button_released)
 	add_child(right_controller)
 
 	_laser_immediate = ImmediateMesh.new()
@@ -55,12 +54,12 @@ func _build_xr_nodes() -> void:
 	_laser_mesh_inst.material_override = _laser_mat
 	right_controller.add_child(_laser_mesh_inst)
 
-	# Controlador Izquierdo: Panel de muneca VR_WristPanel3D
 	left_controller = XRController3D.new()
 	left_controller.name = "LeftHandController"
 	left_controller.tracker = &"left_hand"
 	left_controller.pose = &"grip"
 	left_controller.button_pressed.connect(_on_left_controller_button_pressed)
+	left_controller.button_released.connect(_on_left_controller_button_released)
 	add_child(left_controller)
 
 	wrist_panel = VRWristPanelScript.new()
@@ -95,9 +94,8 @@ func _process(_delta: float) -> void:
 	var origin: Vector3 = right_controller.global_position
 	var forward_dir: Vector3 = -right_controller.global_transform.basis.z.normalized()
 
-	# Interseccion en el espacio local del tablero giratorio (Seccion 2.2.3)
 	var cell: Vector2i = GameConstants.world_ray_to_grid(origin, forward_dir, _grid_size)
-	var valid: bool = (cell != Vector2i(-1, -1))
+	var valid: bool = (cell != Vector2i(-1, -1)) and GameConstants.is_gameplay_active
 
 	var local_end: Vector3 = Vector3(0.0, 0.0, -12.0)
 	if valid:
@@ -124,17 +122,42 @@ func _draw_laser_line(local_end: Vector3) -> void:
 func _on_right_controller_button_pressed(button_name: String) -> void:
 	if not is_active_rig:
 		return
-	if button_name == "trigger_click":
-		if _is_hover_valid:
+	if button_name == "ax_button":
+		EventBus.vr_input_test_pulse.emit("action_primary", true)
+		if GameConstants.is_gameplay_active:
+			EventBus.sim_control_requested.emit("TOGGLE_PAUSE")
+	elif button_name == "by_button":
+		EventBus.vr_input_test_pulse.emit("action_back", true)
+		if GameConstants.is_gameplay_active:
+			EventBus.sim_control_requested.emit("RESET")
+	elif button_name == "trigger_click":
+		if GameConstants.is_gameplay_active and _is_hover_valid:
 			EventBus.god_action_requested.emit(_hovered_cell, _active_tool)
-	elif button_name == "ax_button":
-		var next_idx: int = posmod(int(_active_tool) + 1, 5)
-		EventBus.god_tool_changed.emit(next_idx as GameConstants.GodTool)
+
+func _on_right_controller_button_released(button_name: String) -> void:
+	if button_name == "ax_button":
+		EventBus.vr_input_test_pulse.emit("action_primary", false)
+	elif button_name == "by_button":
+		EventBus.vr_input_test_pulse.emit("action_back", false)
 
 func _on_left_controller_button_pressed(button_name: String) -> void:
 	if not is_active_rig:
 		return
-	if button_name == "by_button":
-		EventBus.sim_control_requested.emit("TOGGLE_PAUSE")
-	elif button_name == "trigger_click":
-		EventBus.sim_control_requested.emit("STEP")
+	if button_name == "ax_button":
+		EventBus.vr_input_test_pulse.emit("action_menu", true)
+		if GameConstants.is_gameplay_active:
+			EventBus.menu_drawer_toggled.emit()
+	elif button_name == "by_button":
+		EventBus.vr_input_test_pulse.emit("action_aux", true)
+		if GameConstants.is_gameplay_active:
+			var next_idx: int = posmod(int(_active_tool) + 1, GameConstants.get_tool_count())
+			EventBus.god_tool_changed.emit(next_idx as GameConstants.GodTool)
+	elif button_name == "grip_click":
+		if GameConstants.is_gameplay_active:
+			EventBus.active_floor_switch_requested.emit(-1)
+
+func _on_left_controller_button_released(button_name: String) -> void:
+	if button_name == "ax_button":
+		EventBus.vr_input_test_pulse.emit("action_menu", false)
+	elif button_name == "by_button":
+		EventBus.vr_input_test_pulse.emit("action_aux", false)

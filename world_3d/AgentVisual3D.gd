@@ -2,11 +2,7 @@ class_name AgentVisual3D
 extends Node3D
 ## Entorno Visual 3D: AgentVisual3D
 ## Representacion 3D procedural del Agente Explorador con Coreografia de Movimiento
-## Estilo Pieza de Ajedrez (Chess-Piece Motion en 4 sub-etapas):
-##   1. Giro Deliberado (0.18 s, TRANS_CUBIC)
-##   2. Levantamiento e Inclinacion de Mano Invisible (-12 deg en X, H_arco = 1.15)
-##   3. Desplazamiento en Arco Parabolico Y(t) = Y_base + 4 * H_arco * t * (1 - t)
-##   4. Aterrizaje con Peso de Pieza de Madera/Marmol (Micro-compresion TRANS_BOUNCE)
+## Estilo Pieza de Ajedrez (4 sub-etapas) + Animacion de Teletransporte por Portal.
 
 const ORIENT_DURATION_BASE: float = 0.18
 const ARC_GLIDE_DURATION_BASE: float = 0.55
@@ -21,8 +17,9 @@ var _arc_end_pos: Vector3 = Vector3.ZERO
 
 func _ready() -> void:
 	_build_agent_mesh()
-	EventBus.agent_transform_updated.connect(_on_agent_transform_updated)
-	EventBus.agent_arrow_fired.connect(_on_agent_arrow_fired)
+	EventBus.agent_transform_3d_updated.connect(_on_agent_transform_3d_updated)
+	EventBus.agent_teleported.connect(_on_agent_teleported)
+	EventBus.agent_arrow_fired_3d.connect(_on_agent_arrow_fired_3d)
 
 func _build_agent_mesh() -> void:
 	_pivot = Node3D.new()
@@ -59,7 +56,7 @@ func _build_agent_mesh() -> void:
 	body_inst.material_override = body_mat
 	_pivot.add_child(body_inst)
 
-	# Visor frontal blanco/cian que indica facing_dir (hacia +Z local del pivot)
+	# Visor frontal blanco/cian que indica facing_dir
 	var visor_inst: MeshInstance3D = MeshInstance3D.new()
 	var visor_box: BoxMesh = BoxMesh.new()
 	visor_box.size = Vector3(0.46, 0.18, 0.24)
@@ -74,7 +71,7 @@ func _build_agent_mesh() -> void:
 	visor_inst.material_override = visor_mat
 	_pivot.add_child(visor_inst)
 
-	# Mochila de sensores XAI en la espalda (-Z local)
+	# Mochila de sensores XAI
 	var pack_inst: MeshInstance3D = MeshInstance3D.new()
 	var pack_box: BoxMesh = BoxMesh.new()
 	pack_box.size = Vector3(0.40, 0.45, 0.22)
@@ -86,7 +83,7 @@ func _build_agent_mesh() -> void:
 	pack_inst.material_override = pack_mat
 	_pivot.add_child(pack_inst)
 
-	# Proyectil de flecha energetica para animar cuando dispara (Regla R6)
+	# Proyectil de flecha energetica
 	_arrow_mesh = MeshInstance3D.new()
 	var arrow_box: BoxMesh = BoxMesh.new()
 	arrow_box.size = Vector3(0.10, 0.10, 0.85)
@@ -100,8 +97,8 @@ func _build_agent_mesh() -> void:
 	_arrow_mesh.visible = false
 	add_child(_arrow_mesh)
 
-func _on_agent_transform_updated(grid_pos: Vector2i, facing_dir: Vector2i, is_moving: bool) -> void:
-	var target_local: Vector3 = GameConstants.grid_to_world(grid_pos, 0.0)
+func _on_agent_transform_3d_updated(grid_pos: Vector3i, facing_dir: Vector2i, is_moving: bool) -> void:
+	var target_local: Vector3 = GameConstants.grid3_to_world(grid_pos, 0.0)
 	var target_yaw: float = _dir_to_yaw(facing_dir)
 
 	if _move_tween != null and _move_tween.is_valid():
@@ -128,26 +125,47 @@ func _on_agent_transform_updated(grid_pos: Vector2i, facing_dir: Vector2i, is_mo
 
 	_move_tween = create_tween()
 
-	# Sub-etapa 1: Giro Deliberado (Orientacion sobre eje Y)
 	if _pivot != null:
 		_move_tween.tween_property(_pivot, "rotation:y", shortest_target_yaw, orient_dur).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
 
-	# Sub-etapas 2 y 3: Levantamiento, Inclinacion (-12 deg en X) y Arco Parabolico Y(t)
 	_move_tween.tween_method(_update_chess_parabolic_arc, 0.0, 1.0, glide_dur).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
 
-	# Sub-etapa 4: Aterrizaje con Peso de Pieza de Madera/Marmol (Settle & Micro-Bounce)
 	_move_tween.tween_callback(_apply_landing_compression)
 	if _pivot != null:
 		_move_tween.tween_property(_pivot, "scale", Vector3.ONE, bounce_dur).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
 
+func _on_agent_teleported(_from_cell: Vector3i, to_cell: Vector3i) -> void:
+	if _move_tween != null and _move_tween.is_valid():
+		_move_tween.kill()
+
+	var speed_mult: float = clampf(GameConstants.current_speed_multiplier, 0.25, 4.0)
+	var shrink_dur: float = 0.34 / speed_mult
+	var emerge_dur: float = 0.40 / speed_mult
+	var dest_local: Vector3 = GameConstants.grid3_to_world(to_cell, 0.0)
+
+	_move_tween = create_tween()
+	if _pivot != null:
+		_move_tween.set_parallel(true)
+		_move_tween.tween_property(_pivot, "scale", Vector3(0.08, 1.65, 0.08), shrink_dur).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		_move_tween.tween_property(_pivot, "rotation:y", _pivot.rotation.y + TAU, shrink_dur).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		_move_tween.set_parallel(false)
+
+	_move_tween.tween_callback(func() -> void:
+		position = dest_local
+		if _pivot != null:
+			_pivot.rotation.x = 0.0
+			_pivot.scale = Vector3(0.08, 1.65, 0.08)
+	)
+
+	if _pivot != null:
+		_move_tween.tween_property(_pivot, "scale", Vector3.ONE, emerge_dur).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
 func _update_chess_parabolic_arc(t: float) -> void:
 	var horiz: Vector3 = _arc_start_pos.lerp(_arc_end_pos, t)
-	# Formula exacta de parabola (Seccion 1.2.3): Y(t) = Y_base + 4 * H_arco * t * (1 - t)
 	var arc_y: float = 4.0 * GameConstants.CHESS_ARC_HEIGHT * t * (1.0 - t)
 	position = Vector3(horiz.x, arc_y, horiz.z)
 
 	if _pivot != null:
-		# Inclinacion suave hacia adelante (-12 grados en eje local X) al elevarse, enderezandose al aterrizar
 		var tilt_envelope: float = sin(t * PI)
 		_pivot.rotation.x = TILT_MAX_RAD * tilt_envelope
 
@@ -157,23 +175,20 @@ func _apply_landing_compression() -> void:
 		_pivot.rotation.x = 0.0
 		_pivot.scale = Vector3(1.06, 0.92, 1.06)
 
-func _on_agent_arrow_fired(from_cell: Vector2i, target_cell: Vector2i, _hit_wumpus: bool) -> void:
+func _on_agent_arrow_fired_3d(from_cell: Vector3i, target_cell: Vector3i, _hit_wumpus: bool) -> void:
 	if _arrow_mesh == null:
 		return
-	var start_local: Vector3 = GameConstants.grid_to_world(from_cell, 0.65)
-	var end_local: Vector3 = GameConstants.grid_to_world(target_cell, 0.65)
-	var start_world: Vector3 = GameConstants.board_global_transform * start_local
-	var end_world: Vector3 = GameConstants.board_global_transform * end_local
+	var start_local: Vector3 = GameConstants.grid3_to_world(from_cell, 0.65)
+	var end_local: Vector3 = GameConstants.grid3_to_world(target_cell, 0.65)
 	var shoot_dir: Vector2i = Vector2i(signi(target_cell.x - from_cell.x), signi(target_cell.y - from_cell.y))
 
-	_arrow_mesh.top_level = true
-	_arrow_mesh.global_position = start_world
-	var local_basis: Basis = Basis.from_euler(Vector3(0.0, _dir_to_yaw(shoot_dir), 0.0))
-	_arrow_mesh.global_transform.basis = GameConstants.board_global_transform.basis * local_basis
+	_arrow_mesh.top_level = false
+	_arrow_mesh.position = start_local - position
+	_arrow_mesh.rotation = Vector3(0.0, _dir_to_yaw(shoot_dir), 0.0)
 	_arrow_mesh.visible = true
 
 	var arrow_tween: Tween = create_tween()
-	arrow_tween.tween_property(_arrow_mesh, "global_position", end_world, 0.28).set_trans(Tween.TRANS_LINEAR)
+	arrow_tween.tween_property(_arrow_mesh, "position", end_local - position, 0.28).set_trans(Tween.TRANS_LINEAR)
 	arrow_tween.tween_callback(func() -> void: _arrow_mesh.visible = false)
 
 func _dir_to_yaw(dir: Vector2i) -> float:
